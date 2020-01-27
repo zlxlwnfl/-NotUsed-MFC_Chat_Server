@@ -1,24 +1,24 @@
-#pragma once
-
 #include <iostream>
 #include <string>
+#include <unistd.h>
+#include <queue>
 #include <sys/socket.h>
 #include <arpa/inet.h>
-#include <unistd.h>
 #include <signal.h>
 #include <sys/wait.h>
 #include <netinet/in.h>
+#include "Controller.h"
 
 #define PORT 8080
-#define BUF_SIZE 1024
 #define MAX_CONNECTIONS 100
 
 using namespace std;
 
 void wait_childproc(int sig);
 
+//extern "C"
 int main() {
-    
+
     int listen_sock, write_sock;
     sockaddr_in listen_addr, write_addr;
 
@@ -78,14 +78,8 @@ int main() {
         if(pid == 0) {  // child process
             close(listen_sock);
 
-            char buf[BUF_SIZE];
-            string msg;
-            int result;
-
-            while((result = recv(write_sock, buf, BUF_SIZE, 0)) > 0) {
-                msg = (string)buf;
-                std::cout << buf << endl;
-            }
+            Controller controller(write_sock);
+            controller.Controlling();
 
             close(write_sock);
             std::cout << "write socket disconnected..." << endl;
