@@ -19,6 +19,9 @@ private:
     mongocxx::database db;
 public:
     Service() { db = client["mfcChatDb"]; }
-    string SignUp(string& str);
-    string SignIn(string& str);
+    string TimeFormat(time_t t);
+    string SignUp(string& recvMessage);
+    string SignIn(string& recvMessage);
+    string CreateChat(string& recvMessage);
+    string SendChatData(string chatId, long lastReadTime, map<string, long>& chatListMap);
 };

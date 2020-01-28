@@ -4,6 +4,8 @@
 #include <string>
 #include <unistd.h>
 #include <queue>
+#include <vector>
+#include <map>
 #include "Controller.h"
 #include "Service.h"
 
@@ -22,10 +24,12 @@ private:
 
     queue<string> recvMessageQueue;
     queue<string> sendMessageQueue;
+    map<string, long> chatListMap;      // chatId, lastReadTime
 
     enum TYPE {
         signUp,
-        signIn
+        signIn,
+        chat
     };
 public:
     Controller(int write_sock) { this->write_sock = write_sock; }
