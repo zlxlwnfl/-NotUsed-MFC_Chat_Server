@@ -4,6 +4,7 @@
 #include <jsoncpp/json/json.h>
 #include <cstdint>
 #include <ctime>
+#include <vector>
 
 #include <bsoncxx/builder/stream/document.hpp>
 #include <bsoncxx/json.hpp>
@@ -143,9 +144,9 @@ string Service::CreateChat(string& recvMessage) {
     // add chat document to user col
     auto addChatListToUserInfoResult =
         userCol.update_one(document{} << "userId" << userId << finalize,
-                            document{} << "$set" << open_document <<
-                                    "userChatList" << open_array <<
-                                    chatId << close_array << 
+                            document{} << "$push" << open_document <<
+                                    "userChatList" <<
+                                        chatId <<
                                     close_document << finalize);
     if(!addChatListToUserInfoResult) {
         cout << "add chat list to user info failure" << endl;
@@ -154,6 +155,47 @@ string Service::CreateChat(string& recvMessage) {
     
     // return success message
     return chatId;
+}
+
+string Service::GetChat(string& recvMessage) {
+    Json::Reader reader;
+    Json::Value recvValue;
+    reader.parse(recvMessage, recvValue);
+
+    string chatId = recvValue["chatId"].asString();
+
+    return chatId;
+}
+
+void Service::GetChatSentence(string& recvMessage) {
+    Json::Reader reader;
+    Json::Value recvValue;
+    reader.parse(recvMessage, recvValue);
+
+    string chatId = recvValue["chatId"].asString();
+    string userId = recvValue["userId"].asString();
+    string chatStr = recvValue["chatStr"].asString();
+
+    cout << "recvMessage parsing after" << endl;
+
+    mongocxx::collection chatCol = db["chatInfo"];
+
+    bsoncxx::oid chatOid(chatId);
+
+    // add chat document to user col
+    auto addChatSentenceToChatInfoResult =
+        chatCol.update_one(document{} << "_id" <<  chatOid << finalize,
+                            document{} << "$push" << open_document <<
+                                    "sentence" <<
+                                        open_document <<
+                                            "userId" << userId <<
+                                            "date" <<  time(NULL) <<
+                                            "chatStr" << chatStr <<
+                                        close_document << 
+                                    close_document << finalize);
+    if(!addChatSentenceToChatInfoResult) {
+        cout << "add chat sentence to chat info failure" << endl;
+    }
 }
 
 string Service::SendChatData(string chatId, long lastReadTime, map<string, long>& chatListMap) {
@@ -180,7 +222,7 @@ string Service::SendChatData(string chatId, long lastReadTime, map<string, long>
 
     sendValue["type"] = 4;
     sendValue["chatId"] = chatId;
-    sendValue["sentence"] = Json::Value(Json::arrayValue);
+    //sendValue["sentence"] = Json::Value(Json::arrayValue);
 
     Json::Value tmp;
 
@@ -205,5 +247,62 @@ string Service::SendChatData(string chatId, long lastReadTime, map<string, long>
     chatListMap[chatId] = time(NULL);
 
     // return success message
+    return fastWriter.write(sendValue);
+}
+
+string Service::UserChatList(string& recvMessage) {
+    Json::Reader reader;
+    Json::FastWriter fastWriter;
+    Json::Value recvValue;
+    Json::Value sendValue;
+    reader.parse(recvMessage, recvValue);
+
+    string userId = recvValue["userId"].asString();
+
+    mongocxx::collection userCol = db["userInfo"];
+    mongocxx::collection chatCol = db["chatInfo"];
+
+    // find user info from user col
+    auto findUserInfoResult =
+        userCol.find_one(document{} << "userId" << userId << finalize);
+    if(!findUserInfoResult) {
+        cout << "find user info failure" << endl;
+        return "";
+    }
+
+    reader.parse(bsoncxx::to_json(*findUserInfoResult), recvValue);
+    if(!recvValue["userChatList"]) {
+        cout << "user chat list empty" << endl;
+        return "";
+    }
+
+    Json::Value userChatList = recvValue["userChatList"];
+
+    vector<string> chatIdVec;
+
+    for(Json::Value::ArrayIndex i = 0; i != userChatList.size(); i++) {
+        chatIdVec.push_back(userChatList[i].asString());
+    }
+
+    Json::Value tmp;
+
+    // find chat info from chat col
+    for(string chatId : chatIdVec) {
+        bsoncxx::oid chatOid(chatId);
+
+        auto findChatInfoResult =
+            chatCol.find_one(document{} << "_id" <<  chatOid << finalize);
+        if(!findChatInfoResult) {
+            cout << "find chat info failure" << endl;
+            return "";
+        }
+
+        reader.parse(bsoncxx::to_json(*findChatInfoResult), tmp);
+        sendValue["chatInfo"].append(tmp);
+    }
+
+    // create sendMessage
+    sendValue["type"] = 5;
+
     return fastWriter.write(sendValue);
 }

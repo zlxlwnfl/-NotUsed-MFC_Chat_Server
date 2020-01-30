@@ -15,18 +15,27 @@
 using namespace std;
 
 void wait_childproc(int sig);
+void close_mainproc(int sig);
 
-//extern "C"
+int listen_sock;
+bool closeServer_flag = false;
+
 int main() {
 
-    int listen_sock, write_sock;
+    int write_sock;
     sockaddr_in listen_addr, write_addr;
 
-    struct sigaction act;
-    act.sa_handler = wait_childproc;
-    sigemptyset(&act.sa_mask);
-    act.sa_flags = 0;
-    sigaction(SIGCHLD, &act, 0);
+    struct sigaction act_SIGCHLD;
+    act_SIGCHLD.sa_handler = wait_childproc;
+    sigemptyset(&act_SIGCHLD.sa_mask);
+    act_SIGCHLD.sa_flags = 0;
+    sigaction(SIGCHLD, &act_SIGCHLD, 0);
+
+    struct sigaction act_SIGINT;
+    act_SIGINT.sa_handler = close_mainproc;
+    sigemptyset(&act_SIGINT.sa_mask);
+    act_SIGINT.sa_flags = 0;
+    sigaction(SIGINT, &act_SIGINT, 0);
 
     listen_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if(listen_sock == -1) {
@@ -60,6 +69,8 @@ int main() {
     socklen_t write_addr_size;
 
     while(true) {
+        if(closeServer_flag)  return 0;
+
         write_addr_size = sizeof(write_addr);
         write_sock = accept(listen_sock, (struct sockaddr*)&write_addr, &write_addr_size);
         if(write_sock == -1) {
@@ -87,11 +98,6 @@ int main() {
         }
     }
     
-    close(listen_sock);
-    std::cout << "server close... " << PORT << endl;
-
-    return 0;
-
 }
 
 void wait_childproc(int sig) {
@@ -102,4 +108,13 @@ void wait_childproc(int sig) {
     if(WIFEXITED(status)) {
         cout << "removed proc id : " << pid << endl;
     }
+}
+
+void close_mainproc(int sig) {
+    if(!closeServer_flag) {
+        close(listen_sock);
+        std::cout << endl << "server close... " << PORT << endl;
+    }
+
+    closeServer_flag = true;
 }

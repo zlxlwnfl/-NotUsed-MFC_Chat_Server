@@ -23,5 +23,8 @@ public:
     string SignUp(string& recvMessage);
     string SignIn(string& recvMessage);
     string CreateChat(string& recvMessage);
+    string GetChat(string& recvMessage);
+    void   GetChatSentence(string& recvMessage);
     string SendChatData(string chatId, long lastReadTime, map<string, long>& chatListMap);
+    string UserChatList(string& recvMessage);
 };

@@ -27,9 +27,13 @@ private:
     map<string, long> chatListMap;      // chatId, lastReadTime
 
     enum TYPE {
+        closeClient,
         signUp,
         signIn,
-        chat
+        createChat,
+        getChat,
+        getChatSentence,
+        userChatList
     };
 public:
     Controller(int write_sock) { this->write_sock = write_sock; }

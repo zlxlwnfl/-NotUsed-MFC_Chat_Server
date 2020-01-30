@@ -6,17 +6,20 @@
 #include <netinet/in.h>
 #include <jsoncpp/json/json.h>
 
+bool closeClient_flag = false;
+
 void Controller::Controlling() {
     int recvResult;
     string result;
 
     // recv function waits if no data received
     while(true) {
+        if(closeClient_flag)    return;
 
         if(recvResult = (recv(write_sock, recvBuf, BUF_SIZE, MSG_DONTWAIT)) > 0) {
             str = (string)recvBuf;
             recvMessageQueue.push(str);
-        }else if(recvResult == 0 || recvResult == -1)    return;
+        }else if(recvResult == -1)    return;
 
         // new thread
         if(!recvMessageQueue.empty()) {
@@ -47,6 +50,7 @@ void Controller::Controlling() {
                 }
             }
         }
+
     }
 
 }
@@ -61,6 +65,9 @@ void Controller::TypeParsingAndServiceCall(string& str) {
     string result;
 
     switch(type) {
+    case TYPE::closeClient:
+        closeClient_flag = true;
+        break;
     case TYPE::signUp:
         result = service.SignUp(str);
         if(result != "") {
@@ -75,10 +82,27 @@ void Controller::TypeParsingAndServiceCall(string& str) {
             sendMessageQueue.push(result);
         }
         break;
-    case TYPE::chat:
+    case TYPE::createChat:
         result = service.CreateChat(str);
         if(result != "") {
             chatListMap[result] = 0L;
+        }
+        break;
+    case TYPE::getChat:
+        result = service.GetChat(str);
+        if(result != "") {
+            chatListMap[result] = 0L;
+        }
+        break;
+    case TYPE::getChatSentence:
+        cout << "getChatSentence : " << str << endl;
+        service.GetChatSentence(str);
+        break;
+    case TYPE::userChatList:
+        result = service.UserChatList(str);
+        if(result != "") {
+            cout << "service result : " << result << endl;
+            sendMessageQueue.push(result);
         }
         break;
     }
