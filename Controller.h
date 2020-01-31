@@ -20,10 +20,9 @@ private:
     int write_sock;
     char recvBuf[BUF_SIZE];
     char sendBuf[BUF_SIZE];
-    string str;
 
     queue<string> recvMessageQueue;
-    queue<string> sendMessageQueue;
+    queue<string*> sendMessageQueue;
     map<string, long> chatListMap;      // chatId, lastReadTime
 
     enum TYPE {
@@ -39,4 +38,5 @@ public:
     Controller(int write_sock) { this->write_sock = write_sock; }
     void Controlling();
     void TypeParsingAndServiceCall(string& str);
+    void DeleteSendMessage();
 };
