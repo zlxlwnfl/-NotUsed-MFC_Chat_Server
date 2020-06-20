@@ -6,24 +6,30 @@
 #include <queue>
 #include <vector>
 #include <map>
-#include "Controller.h"
-#include "Service.h"
+#include <mutex>
+#include <condition_variable>
 
 #define BUF_SIZE 1024
 
 using namespace std;
 
+class RoomManager;
+class Service;
+
 class Controller {
 private:
-    Service service;
+    Service* service;
 
     int write_sock;
     char recvBuf[BUF_SIZE];
     char sendBuf[BUF_SIZE];
+    string ID;
+
+    mutex recv_m, send_m;
+    condition_variable recv_cv, send_cv;
 
     queue<string> recvMessageQueue;
-    queue<string*> sendMessageQueue;
-    map<string, long> chatListMap;      // chatId, lastReadTime
+    queue<string> sendMessageQueue;
 
     enum TYPE {
         closeClient,
@@ -34,9 +40,16 @@ private:
         getChatSentence,
         userChatList
     };
+
+    void typeParsingAndServiceCall(string str);
+    void recvMessageConsumer();
+    void sendMessageConsumer();
+
 public:
-    Controller(int write_sock) { this->write_sock = write_sock; }
-    void Controlling();
-    void TypeParsingAndServiceCall(string& str);
-    void DeleteSendMessage();
+    Controller(int write_sock) { this->write_sock = write_sock; };
+    ~Controller() { delete service; };
+    void init();
+    void controlling();
+    void recvMessageProducer(string message);
+    void sendMessageProducer(string message);
 };

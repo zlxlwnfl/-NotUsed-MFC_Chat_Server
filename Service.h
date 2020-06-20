@@ -13,18 +13,20 @@ using namespace std;
 
 class Service {
 private:
-    mongocxx::instance instance{};
+    string ID;
+
     mongocxx::client client{mongocxx::uri{}};
     
     mongocxx::database db;
+    
 public:
+    //: rm(RoomManager::getInstance()) 
     Service() { db = client["mfcChatDb"]; }
-    string TimeFormat(time_t t);
-    string SignUp(string& recvMessage);
-    string SignIn(string& recvMessage);
-    string CreateChat(string& recvMessage);
-    string GetChat(string& recvMessage);
-    void   GetChatSentence(string& recvMessage);
-    string SendChatData(string chatId, long lastReadTime, map<string, long>& chatListMap);
-    string UserChatList(string& recvMessage);
+    string timeFormat(time_t t);
+    string signUp(const string recvMessage);
+    string signIn(const string recvMessage);
+    string createChat(const string recvMessage);
+    string getChat(const string recvMessage);
+    void   getChatSentence(const string recvMessage);
+    string userChatList(const string recvMessage);
 };

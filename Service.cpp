@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Service.h"
+#include "RoomManager.h"
 #include <jsoncpp/json/json.h>
 #include <cstdint>
 #include <ctime>
@@ -16,7 +17,7 @@ using bsoncxx::builder::stream::finalize;
 using bsoncxx::builder::stream::open_array;
 using bsoncxx::builder::stream::open_document;
 
-string Service::TimeFormat(time_t t) {
+string Service::timeFormat(time_t t) {
     struct tm* tmp;
     struct tm* now = localtime_r(&t, tmp);
     char buf[80];
@@ -30,7 +31,7 @@ string Service::TimeFormat(time_t t) {
     return result;
 }
 
-string Service::SignUp(string& recvMessage) {
+string Service::signUp(const string recvMessage) {
     Json::Reader reader;
     Json::FastWriter fastWriter;
     Json::Value recvValue;
@@ -59,15 +60,6 @@ string Service::SignUp(string& recvMessage) {
                                     "userPassword" << userPassword <<
                                     "userNickname" << userId << finalize);
     if(createUserInfoResult) {
-        /*
-        cout << "db userInfo list" << endl;
-    
-        mongocxx::cursor cursor = col.find({});
-        for(auto doc : cursor) {
-            cout << bsoncxx::to_json(doc) << endl;
-        }
-        */
-    
         sendValue["type"] = 1;
         return fastWriter.write(sendValue);
     }
@@ -78,7 +70,7 @@ string Service::SignUp(string& recvMessage) {
     return "";
 }
 
-string Service::SignIn(string& recvMessage) {
+string Service::signIn(const string recvMessage) {
     Json::Reader reader;
     Json::FastWriter fastWriter;
     Json::Value recvValue;
@@ -91,12 +83,12 @@ string Service::SignIn(string& recvMessage) {
     mongocxx::collection col = db["userInfo"];
 
     // is id and password right? (with mongodb)
-        //return overlap message
     bsoncxx::stdx::optional<bsoncxx::document::value> rightUserInfoResult =
         col.find_one(document{} << "userId" << userId <<
                                 "userPassword" << userPassword << finalize);
     if(rightUserInfoResult) { // login success
         sendValue["type"] = 3;
+        ID = userId;
         return fastWriter.write(sendValue);
     }else { // login failure
         sendValue["type"] = 2;
@@ -109,14 +101,13 @@ string Service::SignIn(string& recvMessage) {
     return "";
 }
 
-string Service::CreateChat(string& recvMessage) {
+string Service::createChat(const string recvMessage) {
     Json::Reader reader;
     Json::FastWriter fastWriter;
     Json::Value recvValue;
     Json::Value sendValue;
     reader.parse(recvMessage, recvValue);
 
-    string userId = recvValue["userId"].asString();
     string chatStr = recvValue["chatStr"].asString();
 
     mongocxx::collection userCol = db["userInfo"];
@@ -128,9 +119,9 @@ string Service::CreateChat(string& recvMessage) {
     auto createChatInfoResult =
         chatCol.insert_one(document{} << "type" << "public" <<
                                     "participant" << open_array << 
-                                        userId << close_array <<
+                                        ID << close_array <<
                                     "sentence" << open_array << open_document <<
-                                        "userId" << userId <<
+                                        "userId" << ID <<
                                         "date" <<  time(NULL) <<
                                         "chatStr" << chatStr <<
                                         close_document << close_array << finalize);
@@ -143,7 +134,7 @@ string Service::CreateChat(string& recvMessage) {
 
     // add chat document to user col
     auto addChatListToUserInfoResult =
-        userCol.update_one(document{} << "userId" << userId << finalize,
+        userCol.update_one(document{} << "userId" << ID << finalize,
                             document{} << "$push" << open_document <<
                                     "userChatList" <<
                                         chatId <<
@@ -152,12 +143,14 @@ string Service::CreateChat(string& recvMessage) {
         cout << "add chat list to user info failure" << endl;
         return "";
     }
+
+    RoomManager::getInstance().enterNewRoom(chatId, ID);
     
     // return success message
     return chatId;
 }
 
-string Service::GetChat(string& recvMessage) {
+string Service::getChat(const string recvMessage) {
     Json::Reader reader;
     Json::Value recvValue;
     reader.parse(recvMessage, recvValue);
@@ -167,104 +160,32 @@ string Service::GetChat(string& recvMessage) {
     return chatId;
 }
 
-void Service::GetChatSentence(string& recvMessage) {
+void Service::getChatSentence(const string recvMessage) {
     Json::Reader reader;
     Json::Value recvValue;
     reader.parse(recvMessage, recvValue);
 
     string chatId = recvValue["chatId"].asString();
-    string userId = recvValue["userId"].asString();
     string chatStr = recvValue["chatStr"].asString();
 
     cout << "recvMessage parsing after" << endl;
 
-    mongocxx::collection chatCol = db["chatInfo"];
-
-    bsoncxx::oid chatOid(chatId);
-
-    // add chat document to user col
-    auto addChatSentenceToChatInfoResult =
-        chatCol.update_one(document{} << "_id" <<  chatOid << finalize,
-                            document{} << "$push" << open_document <<
-                                    "sentence" <<
-                                        open_document <<
-                                            "userId" << userId <<
-                                            "date" <<  time(NULL) <<
-                                            "chatStr" << chatStr <<
-                                        close_document << 
-                                    close_document << finalize);
-    if(!addChatSentenceToChatInfoResult) {
-        cout << "add chat sentence to chat info failure" << endl;
-    }
+    RoomManager::getInstance().messageBrodcast(chatId, ID, chatStr);
 }
 
-string Service::SendChatData(string chatId, long lastReadTime, map<string, long>& chatListMap) {
-    Json::Reader reader;
-    Json::FastWriter fastWriter;
-    Json::Value recvValue;
-    Json::Value sendValue;
-
-    mongocxx::collection chatCol = db["chatInfo"];
-
-    bsoncxx::oid chatOid(chatId);
-
-    // get chat info from chat col
-    auto getChatInfoResult =
-        chatCol.find_one(document{} << "_id" <<  chatOid << finalize);
-    if(!getChatInfoResult) {
-        cout << "get chat info failure" << endl;
-        return "";
-    }
-
-    // json parsing
-    reader.parse(bsoncxx::to_json(*getChatInfoResult), recvValue);
-    Json::Value sentence = recvValue["sentence"];
-
-    sendValue["type"] = 4;
-    sendValue["chatId"] = chatId;
-    //sendValue["sentence"] = Json::Value(Json::arrayValue);
-
-    Json::Value tmp;
-
-    // get chat data before lastReadTime
-    for(Json::Value::ArrayIndex i = 0; i != sentence.size(); i++) {
-        if(sentence[i]["date"].asLargestInt() > lastReadTime) {
-            cout << "sentence[i] time : " << sentence[i]["date"].asLargestInt() << endl;
-            cout << "lastReadTime : " << lastReadTime << endl;
-
-            tmp["userId"] = sentence[i]["userId"].asCString();
-            tmp["date"] = sentence[i]["date"].asLargestInt();
-            tmp["chatStr"] = sentence[i]["chatStr"].asCString();
-            sendValue["sentence"].append(tmp);
-        }
-    }
-
-    // send data nothing
-    if(sendValue["sentence"].empty())
-        return "";
-    
-    // last read time change to now time
-    chatListMap[chatId] = time(NULL);
-
-    // return success message
-    return fastWriter.write(sendValue);
-}
-
-string Service::UserChatList(string& recvMessage) {
+string Service::userChatList(const string recvMessage) {
     Json::Reader reader;
     Json::FastWriter fastWriter;
     Json::Value recvValue;
     Json::Value sendValue;
     reader.parse(recvMessage, recvValue);
-
-    string userId = recvValue["userId"].asString();
 
     mongocxx::collection userCol = db["userInfo"];
     mongocxx::collection chatCol = db["chatInfo"];
 
     // find user info from user col
     auto findUserInfoResult =
-        userCol.find_one(document{} << "userId" << userId << finalize);
+        userCol.find_one(document{} << "userId" << ID << finalize);
     if(!findUserInfoResult) {
         cout << "find user info failure" << endl;
         return "";
@@ -283,6 +204,8 @@ string Service::UserChatList(string& recvMessage) {
     for(Json::Value::ArrayIndex i = 0; i != userChatList.size(); i++) {
         chatIdVec.push_back(userChatList[i].asString());
     }
+
+    RoomManager::getInstance().setRoomList(chatIdVec, ID);
 
     Json::Value tmp;
 
@@ -303,6 +226,6 @@ string Service::UserChatList(string& recvMessage) {
 
     // create sendMessage
     sendValue["type"] = 5;
-
+    
     return fastWriter.write(sendValue);
 }
